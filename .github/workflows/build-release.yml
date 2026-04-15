@@ -14,6 +14,8 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
@@ -22,21 +24,21 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Personal Finance Tracker ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
+          name: Personal Finance Tracker ${{ github.ref_name }}
           body: |
             ## Download Available For:
-            - 🐧 Linux (x86_64)
-            - 🪟 Windows (x86_64)
-            - 🍎 macOS (Intel & Apple Silicon)
-            - 🤖 Android (APK)
-            - 📱 iOS (App)
+            - 🐧 Linux (x86_64) - AppImage & .deb
+            - 🪟 Windows (x86_64) - .exe & MSI
+            - 🍎 macOS (Intel) - .dmg
+            - 🍎 macOS (Apple Silicon) - .dmg
+            - 🤖 Android - .apk
+            - 📱 iOS - .ipa
           draft: false
           prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # Linux Desktop Build
   build-linux:
@@ -84,16 +86,13 @@ jobs:
           cp -r src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/* release-artifacts/ 2>/dev/null || true
           cp -r src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/* release-artifacts/ 2>/dev/null || true
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        if: needs.create-release.outputs.upload_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Linux Artifacts
+        uses: ncipollo/release-action@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release-artifacts/
-          asset_name: personal-finance-tracker-linux-x64
-          asset_content_type: application/octet-stream
+          tag: ${{ github.ref_name }}
+          artifacts: './release-artifacts/*'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
     needs: create-release
 
   # Windows Desktop Build
@@ -133,16 +132,13 @@ jobs:
       - name: Build Tauri app
         run: pnpm tauri:build -- --target x86_64-pc-windows-msvc
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        if: needs.create-release.outputs.upload_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Windows Executable
+        uses: ncipollo/release-action@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./src-tauri/target/x86_64-pc-windows-msvc/release/personal-finance-tracker.exe
-          asset_name: personal-finance-tracker-windows-x64.exe
-          asset_content_type: application/octet-stream
+          tag: ${{ github.ref_name }}
+          artifacts: './src-tauri/target/x86_64-pc-windows-msvc/release/personal-finance-tracker.exe'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
     needs: create-release
 
   # macOS Desktop Build (Intel)
@@ -187,16 +183,13 @@ jobs:
           cd src-tauri/target/x86_64-apple-darwin/release/bundle/macos
           hdiutil create -volname "Personal Finance Tracker" -srcfolder . -ov -format UDZO personal-finance-tracker-macos-intel.dmg
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        if: needs.create-release.outputs.upload_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload macOS Intel DMG
+        uses: ncipollo/release-action@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./src-tauri/target/x86_64-apple-darwin/release/bundle/macos/personal-finance-tracker-macos-intel.dmg
-          asset_name: personal-finance-tracker-macos-intel.dmg
-          asset_content_type: application/octet-stream
+          tag: ${{ github.ref_name }}
+          artifacts: './src-tauri/target/x86_64-apple-darwin/release/bundle/macos/personal-finance-tracker-macos-intel.dmg'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
     needs: create-release
 
   # macOS Desktop Build (Apple Silicon)
@@ -241,16 +234,13 @@ jobs:
           cd src-tauri/target/aarch64-apple-darwin/release/bundle/macos
           hdiutil create -volname "Personal Finance Tracker" -srcfolder . -ov -format UDZO personal-finance-tracker-macos-arm64.dmg
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        if: needs.create-release.outputs.upload_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload macOS ARM64 DMG
+        uses: ncipollo/release-action@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/personal-finance-tracker-macos-arm64.dmg
-          asset_name: personal-finance-tracker-macos-arm64.dmg
-          asset_content_type: application/octet-stream
+          tag: ${{ github.ref_name }}
+          artifacts: './src-tauri/target/aarch64-apple-darwin/release/bundle/macos/personal-finance-tracker-macos-arm64.dmg'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
     needs: create-release
 
   # Android Build
@@ -302,16 +292,13 @@ jobs:
           npm install
           npx eas build --platform android --local --output=../../personal-finance-tracker.apk
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        if: needs.create-release.outputs.upload_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Android APK
+        uses: ncipollo/release-action@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./personal-finance-tracker.apk
-          asset_name: personal-finance-tracker-android.apk
-          asset_content_type: application/vnd.android.package-archive
+          tag: ${{ github.ref_name }}
+          artifacts: './personal-finance-tracker.apk'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
     needs: create-release
 
   # iOS Build
@@ -359,14 +346,11 @@ jobs:
           npm install
           npx eas build --platform ios --local --output=../../personal-finance-tracker.ipa
 
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        if: needs.create-release.outputs.upload_url
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload iOS IPA
+        uses: ncipollo/release-action@v1
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./personal-finance-tracker.ipa
-          asset_name: personal-finance-tracker-ios.ipa
-          asset_content_type: application/octet-stream
+          tag: ${{ github.ref_name }}
+          artifacts: './personal-finance-tracker.ipa'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
     needs: create-release
