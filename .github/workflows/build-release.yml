@@ -76,8 +76,7 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10 # Matches the project's pnpm version
+        # Removed the version field to automatically use the version from package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -114,6 +113,7 @@ jobs:
           upload-artifact: false # We will upload artifacts manually
 
       - name: Upload desktop artifacts
+        shell: bash
         run: |
           if [ "${{ matrix.os_name }}" == "linux" ]; then
             find src-tauri/target/${{ matrix.target }}/release/bundle/ -name "*.AppImage" -exec mv {} personal-finance-tracker-linux.AppImage \; 
@@ -142,7 +142,7 @@ jobs:
           fi
           
           for asset in $assets; do
-            gh release upload ${{ needs.create-release.outputs.upload_url }} "$asset" --repo ${{ github.repository }}
+            gh release upload ${{ github.ref_name }} "$asset" --repo ${{ github.repository }} --clobber
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -156,8 +156,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -183,7 +181,7 @@ jobs:
           path: personal-finance-tracker-android.apk
 
       - name: Upload Android APK to Release
-        run: gh release upload ${{ needs.create-release.outputs.upload_url }} personal-finance-tracker-android.apk --repo ${{ github.repository }}
+        run: gh release upload ${{ github.ref_name }} personal-finance-tracker-android.apk --repo ${{ github.repository }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -196,8 +194,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -215,7 +211,6 @@ jobs:
         run: npx eas build --platform ios --local --output=personal-finance-tracker-ios.ipa
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }} # Required for EAS builds
-          # For iOS, you might need additional secrets for code signing, e.g., APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
 
       - name: Upload iOS IPA
         uses: actions/upload-artifact@v4
@@ -224,6 +219,6 @@ jobs:
           path: personal-finance-tracker-ios.ipa
 
       - name: Upload iOS IPA to Release
-        run: gh release upload ${{ needs.create-release.outputs.upload_url }} personal-finance-tracker-ios.ipa --repo ${{ github.repository }}
+        run: gh release upload ${{ github.ref_name }} personal-finance-tracker-ios.ipa --repo ${{ github.repository }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
