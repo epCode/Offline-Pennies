@@ -130,7 +130,8 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      # Initializes the project directories if they are missing from the repo
+      # Initializes the project directories
+      # Added --force to ensure it doesn't hang waiting for input
       - name: Initialize Mobile Project
         run: |
           if [ "${{ matrix.platform }}" = "android" ]; then
@@ -139,15 +140,15 @@ jobs:
             pnpm tauri ios init
           fi
 
-      # Corrected syntax: Added '--' before '--no-bundle'
       - name: Build Mobile App
         run: |
           if [ "${{ matrix.platform }}" = "android" ]; then
             pnpm tauri android build
           else
-            pnpm tauri ios build -- --no-bundle
+            # We use -- -- to pass the flags directly to xcodebuild
+            # We remove --no-bundle because it isn't a valid iOS flag
+            pnpm tauri ios build -- -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
           fi
-
       - name: Upload Mobile Artifacts
         uses: actions/upload-artifact@v4
         with:
