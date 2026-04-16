@@ -17,7 +17,7 @@ jobs:
     name: Build Desktop (${{ matrix.platform.name }})
     runs-on: ${{ matrix.platform.os }}
     env:
-      APPIMAGE_EXTRACT_AND_RUN: 1 # Add this here
+      APPIMAGE_EXTRACT_AND_RUN: 1
     strategy:
       fail-fast: false
       matrix:
@@ -93,14 +93,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-# ===== MOBILE BUILDS =====
-  build-mobile:
-    name: Build Mobile (${{ matrix.platform }})
-    runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [android, ios]
+  # ===== MOBILE BUILD (ANDROID ONLY) =====
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
@@ -112,8 +108,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      - name: Setup Java (Android only)
-        if: matrix.platform == 'android'
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -122,7 +117,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'android' && 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android' || 'aarch64-apple-ios,aarch64-apple-ios-sim' }}
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -130,40 +125,25 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      # Initializes the project directories
-      # Added --force to ensure it doesn't hang waiting for input
-      - name: Initialize Mobile Project
-        run: |
-          if [ "${{ matrix.platform }}" = "android" ]; then
-            pnpm tauri android init
-          else
-            pnpm tauri ios init
-          fi
+      - name: Initialize Android Project
+        run: pnpm tauri android init
 
-      - name: Build Mobile App
-        run: |
-          if [ "${{ matrix.platform }}" = "android" ]; then
-            pnpm tauri android build
-          else
-            # We use -- -- to pass the flags directly to xcodebuild
-            # We remove --no-bundle because it isn't a valid iOS flag
-            pnpm tauri ios build -- -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
-          fi
-      - name: Upload Mobile Artifacts
+      - name: Build Android App
+        run: pnpm tauri android build
+
+      - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-artifacts
+          name: android-artifacts
           path: |
             src-tauri/gen/android/**/*.apk
             src-tauri/gen/android/**/*.aab
-            src-tauri/gen/apple/**/*.ipa
-            src-tauri/gen/apple/**/*.app
           retention-days: 1
           if-no-files-found: warn
           
   publish-release:
     name: Publish Release Draft
-    needs: [build-desktop, build-mobile]
+    needs: [build-desktop, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -185,9 +165,6 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
-      - name: List Artifacts (Debug)
-        run: ls -R release-artifacts/
-
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
@@ -195,9 +172,7 @@ jobs:
           name: Release ${{ env.TAG_NAME }}
           draft: true
           prerelease: false
-          # Targets the specific commit that triggered this run
           target_commitish: ${{ github.sha }}
-          # This will find everything downloaded in the previous step
           files: |
             release-artifacts/**/*.msi
             release-artifacts/**/*.exe
@@ -205,4 +180,3 @@ jobs:
             release-artifacts/**/*.AppImage
             release-artifacts/**/*.apk
             release-artifacts/**/*.aab
-            release-artifacts/**/*.ipa
