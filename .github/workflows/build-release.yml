@@ -10,6 +10,12 @@ on:
 env:
   PNPM_CACHE_HOME: ~/.pnpm-store
 
+# Explicitly grant the GITHUB_TOKEN permissions to create releases and upload assets
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
@@ -206,4 +212,3 @@ jobs:
         run: gh release upload ${{ needs.create-release.outputs.upload_url }} personal-finance-tracker-ios.ipa --repo ${{ github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
