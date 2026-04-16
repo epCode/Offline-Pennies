@@ -1,0 +1,394 @@
+name: Multi-Platform Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: '22'
+  RUST_VERSION: stable
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  # ===== DESKTOP BUILDS =====
+  
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+          
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build Tauri app
+        run: pnpm tauri:build -- --target x86_64-unknown-linux-gnu
+        
+      - name: Prepare artifacts
+        run: |
+          mkdir -p build/linux
+          cp -r src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/* build/linux/ || true
+          cp -r src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/* build/linux/ || true
+          ls -la build/linux/
+          
+      - name: Upload AppImage artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/linux/OfflinePennies_*.AppImage
+          asset_name: OfflinePennies-linux-x86_64.AppImage
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+        
+      - name: Upload Deb artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/linux/offline-pennies_*.deb
+          asset_name: offline-pennies-linux-x86_64.deb
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+
+  build-windows:
+    name: Build Windows (x86_64)
+    runs-on: windows-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build Tauri app
+        run: pnpm tauri:build -- --target x86_64-pc-windows-msvc
+        
+      - name: Prepare artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path build/windows -Force | Out-Null
+          Copy-Item -Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*" -Destination "build/windows/" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "build/windows/" -Recurse
+          
+      - name: Upload MSI artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/windows/OfflinePennies_*.msi
+          asset_name: OfflinePennies-windows-x86_64.msi
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+        
+      - name: Upload Portable EXE artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./src-tauri/target/x86_64-pc-windows-msvc/release/OfflinePennies.exe
+          asset_name: OfflinePennies-windows-x86_64-portable.exe
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+
+  build-macos-intel:
+    name: Build macOS (Intel x86_64)
+    runs-on: macos-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+          
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build Tauri app
+        run: pnpm tauri:build -- --target x86_64-apple-darwin
+        
+      - name: Create DMG
+        run: |
+          mkdir -p build/macos
+          cd src-tauri/target/x86_64-apple-darwin/release/bundle/macos
+          hdiutil create -volname "OfflinePennies" -srcfolder . -ov -format UDZO OfflinePennies-x86_64.dmg
+          mv OfflinePennies-x86_64.dmg ../../../../../../../../build/macos/
+          
+      - name: Upload DMG artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/macos/OfflinePennies-x86_64.dmg
+          asset_name: OfflinePennies-macos-x86_64.dmg
+          asset_content_type: application/octet-stream
+
+  build-macos-arm64:
+    name: Build macOS (Apple Silicon ARM64)
+    runs-on: macos-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+          
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build Tauri app
+        run: pnpm tauri:build -- --target aarch64-apple-darwin
+        
+      - name: Create DMG
+        run: |
+          mkdir -p build/macos
+          cd src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+          hdiutil create -volname "OfflinePennies" -srcfolder . -ov -format UDZO OfflinePennies-arm64.dmg
+          mv OfflinePennies-arm64.dmg ../../../../../../../../build/macos/
+          
+      - name: Upload DMG artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/macos/OfflinePennies-arm64.dmg
+          asset_name: OfflinePennies-macos-arm64.dmg
+          asset_content_type: application/octet-stream
+
+  # ===== MOBILE BUILDS =====
+
+  build-android:
+    name: Build Android (APK)
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+        
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build Android APK (EAS Cloud)
+        env:
+          EAS_NO_VCS: 1
+        run: |
+          # Using Expo/EAS for cross-platform mobile builds
+          npx eas-cli build --platform android --non-interactive --wait
+        continue-on-error: true
+        
+      - name: Download APK
+        continue-on-error: true
+        run: |
+          mkdir -p build/android
+          find ~/.eas -name "*.apk" -exec cp {} build/android/ \; 2>/dev/null || true
+          
+      - name: Upload APK artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/android/OfflinePennies-*.apk
+          asset_name: OfflinePennies-android.apk
+          asset_content_type: application/vnd.android.package-archive
+        continue-on-error: true
+
+  build-ios:
+    name: Build iOS (IPA)
+    runs-on: macos-latest
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+        
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+        
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Build iOS IPA (EAS Cloud)
+        env:
+          EAS_NO_VCS: 1
+        run: |
+          # Using Expo/EAS for cross-platform mobile builds
+          npx eas-cli build --platform ios --non-interactive --wait
+        continue-on-error: true
+        
+      - name: Download IPA
+        continue-on-error: true
+        run: |
+          mkdir -p build/ios
+          find ~/.eas -name "*.ipa" -exec cp {} build/ios/ \; 2>/dev/null || true
+          
+      - name: Upload IPA artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/ios/OfflinePennies-*.ipa
+          asset_name: OfflinePennies-ios.ipa
+          asset_content_type: application/octet-stream
+        continue-on-error: true
+
+  # ===== FINALIZATION =====
+
+  release-summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [create-release, build-linux, build-windows, build-macos-intel, build-macos-arm64, build-android, build-ios]
+    if: always()
+    steps:
+      - name: Check Release Status
+        run: |
+          echo "## Multi-Platform Build Release Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Linux (x86_64): ${{ needs.build-linux.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows (x86_64): ${{ needs.build-windows.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- macOS (Intel x86_64): ${{ needs.build-macos-intel.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- macOS (ARM64): ${{ needs.build-macos-arm64.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Android (APK): ${{ needs.build-android.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- iOS (IPA): ${{ needs.build-ios.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Release URL" >> $GITHUB_STEP_SUMMARY
+          echo "Release artifacts available at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
