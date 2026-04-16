@@ -113,9 +113,18 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      # Android needs Java and specific NDK setup
+      - name: Setup Java (Android only)
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          # Targets for Android (all archs) and iOS (physical + simulator)
           targets: ${{ matrix.platform == 'android' && 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android' || 'aarch64-apple-ios,aarch64-apple-ios-sim' }}
 
       - name: Install dependencies
@@ -124,16 +133,22 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      # Note: For Android, this creates APKs in src-tauri/gen/android/app/build/outputs/apk/
+      # Corrected: Using 'tauri android build' or 'tauri ios build'
+      # We add --no-bundle for iOS if you don't have provisioning profiles set up in CI
       - name: Build Mobile App
-        run: pnpm tauri build --target ${{ matrix.platform }}
-        continue-on-error: true 
+        run: |
+          if [ "${{ matrix.platform }}" = "android" ]; then
+            pnpm tauri android build
+          else
+            pnpm tauri ios build --no-bundle
+          fi
+        env:
+          NDK_HOME: ${{ steps.setup-python.outputs.python-path }} # Not strictly needed if standard paths work, but good to keep in mind
 
       - name: Upload Mobile Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-artifacts
-          # This updated path catches Tauri v2's nested output structure
           path: |
             src-tauri/gen/android/**/*.apk
             src-tauri/gen/android/**/*.aab
@@ -141,8 +156,7 @@ jobs:
             src-tauri/gen/apple/**/*.app
           retention-days: 1
           if-no-files-found: warn
-
-  # ===== FINALIZATION & RELEASE =====
+          
   publish-release:
     name: Publish Release Draft
     needs: [build-desktop, build-mobile]
