@@ -16,6 +16,8 @@ jobs:
   build-desktop:
     name: Build Desktop (${{ matrix.platform.name }})
     runs-on: ${{ matrix.platform.os }}
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: 1 # Add this here
     strategy:
       fail-fast: false
       matrix:
