@@ -92,6 +92,7 @@ jobs:
           if-no-files-found: ignore
 
   # ===== MOBILE BUILDS =====
+# ===== MOBILE BUILDS =====
   build-mobile:
     name: Build Mobile (${{ matrix.platform }})
     runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
@@ -121,27 +122,23 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
+      # Note: For Android, this creates APKs in src-tauri/gen/android/app/build/outputs/apk/
       - name: Build Mobile App
         run: pnpm tauri build --target ${{ matrix.platform }}
-        continue-on-error: true
+        continue-on-error: true 
 
-      - name: Upload Android Artifacts
-        if: matrix.platform == 'android'
+      - name: Upload Mobile Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: android-artifacts
-          path: src-tauri/gen/android/**/*.apk
+          name: ${{ matrix.platform }}-artifacts
+          # This updated path catches Tauri v2's nested output structure
+          path: |
+            src-tauri/gen/android/**/*.apk
+            src-tauri/gen/android/**/*.aab
+            src-tauri/gen/apple/**/*.ipa
+            src-tauri/gen/apple/**/*.app
           retention-days: 1
-          if-no-files-found: ignore
-
-      - name: Upload iOS Artifacts
-        if: matrix.platform == 'ios'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-artifacts
-          path: src-tauri/gen/apple/**/*.ipa
-          retention-days: 1
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
   # ===== FINALIZATION & RELEASE =====
   publish-release:
@@ -159,7 +156,7 @@ jobs:
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           else
-            echo "TAG_NAME=manual-draft-${GITHUB_RUN_ID}" >> $GITHUB_ENV
+            echo "TAG_NAME=manual-build-${{ github.run_number }}" >> $GITHUB_ENV
           fi
 
       - name: Download all artifacts
@@ -168,6 +165,9 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      - name: List Artifacts (Debug)
+        run: ls -R release-artifacts/
+
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
@@ -175,12 +175,14 @@ jobs:
           name: Release ${{ env.TAG_NAME }}
           draft: true
           prerelease: false
+          # Targets the specific commit that triggered this run
           target_commitish: ${{ github.sha }}
-          files: release-artifacts/*
-
-      - name: Release Summary
-        run: |
-          echo "## Multi-Platform Build Release Complete" >> $GITHUB_STEP_SUMMARY
-          echo "Draft release created: **${{ env.TAG_NAME }}**" >> $GITHUB_STEP_SUMMARY
-          echo "Target Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "Release artifacts available at: ${{ github.server_url }}/${{ github.repository }}/releases" >> $GITHUB_STEP_SUMMARY
+          # This will find everything downloaded in the previous step
+          files: |
+            release-artifacts/**/*.msi
+            release-artifacts/**/*.exe
+            release-artifacts/**/*.deb
+            release-artifacts/**/*.AppImage
+            release-artifacts/**/*.apk
+            release-artifacts/**/*.aab
+            release-artifacts/**/*.ipa
