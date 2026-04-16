@@ -12,31 +12,9 @@ env:
   RUST_VERSION: stable
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Create Release
-        id: create_release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          draft: true # FIXED: This now creates a draft instead of a published release
-          prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   # ===== DESKTOP BUILDS =====
-  
   build-desktop:
     name: Build Desktop (${{ matrix.platform.name }})
-    needs: create-release # FIXED: Waits for the draft release to be created first
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
@@ -44,8 +22,6 @@ jobs:
         platform:
           - { name: "Linux x86_64", os: "ubuntu-latest", target: "x86_64-unknown-linux-gnu" }
           - { name: "Windows x86_64", os: "windows-latest", target: "x86_64-pc-windows-msvc" }
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       
@@ -96,29 +72,33 @@ jobs:
           New-Item -ItemType Directory -Path build/windows -Force | Out-Null
           Copy-Item -Path "src-tauri/target/${{ matrix.platform.target }}/release/bundle/msi/*.msi" -Destination "build/windows/" -Force -ErrorAction SilentlyContinue
           Copy-Item -Path "src-tauri/target/${{ matrix.platform.target }}/release/Personal Finance Tracker.exe" -Destination "build/windows/PersonalFinanceTracker-portable.exe" -Force -ErrorAction SilentlyContinue
-          
-      - name: Upload artifacts
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+
+      - name: Upload Linux Artifacts
+        if: matrix.platform.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            build/linux/*
-            build/windows/*
-          token: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+          name: linux-artifacts
+          path: build/linux/*
+          retention-days: 1
+          if-no-files-found: ignore
+          
+      - name: Upload Windows Artifacts
+        if: matrix.platform.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: build/windows/*
+          retention-days: 1
+          if-no-files-found: ignore
 
   # ===== MOBILE BUILDS =====
-
   build-mobile:
     name: Build Mobile (${{ matrix.platform }})
-    needs: create-release # FIXED: Waits for the draft release to be created first
     runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         platform: [android, ios]
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       
@@ -145,33 +125,62 @@ jobs:
         run: pnpm tauri build --target ${{ matrix.platform }}
         continue-on-error: true
 
-      - name: Upload Mobile artifacts
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload Android Artifacts
+        if: matrix.platform == 'android'
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            src-tauri/gen/android/**/*.apk
-            src-tauri/gen/apple/**/*.ipa
-          token: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+          name: android-artifacts
+          path: src-tauri/gen/android/**/*.apk
+          retention-days: 1
+          if-no-files-found: ignore
 
-  # ===== FINALIZATION =====
+      - name: Upload iOS Artifacts
+        if: matrix.platform == 'ios'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-artifacts
+          path: src-tauri/gen/apple/**/*.ipa
+          retention-days: 1
+          if-no-files-found: ignore
 
-  release-summary:
-    name: Release Summary
+  # ===== FINALIZATION & RELEASE =====
+  publish-release:
+    name: Publish Release Draft
+    needs: [build-desktop, build-mobile]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-    needs: [build-desktop, build-mobile]
-    if: always()
+      contents: write
     steps:
-      - name: Check Release Status
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine Tag Name
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=manual-draft-${GITHUB_RUN_ID}" >> $GITHUB_ENV
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: Release ${{ env.TAG_NAME }}
+          draft: true
+          prerelease: false
+          target_commitish: ${{ github.sha }}
+          files: release-artifacts/*
+
+      - name: Release Summary
         run: |
           echo "## Multi-Platform Build Release Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Build Status" >> $GITHUB_STEP_SUMMARY
-          echo "- Desktop Builds: ${{ needs.build-desktop.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Mobile Builds: ${{ needs.build-mobile.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Release URL" >> $GITHUB_STEP_SUMMARY
-          echo "Release artifacts available at: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "Draft release created: **${{ env.TAG_NAME }}**" >> $GITHUB_STEP_SUMMARY
+          echo "Target Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Release artifacts available at: ${{ github.server_url }}/${{ github.repository }}/releases" >> $GITHUB_STEP_SUMMARY
