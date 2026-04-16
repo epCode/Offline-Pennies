@@ -43,8 +43,6 @@ jobs:
         platform:
           - { name: "Linux x86_64", os: "ubuntu-latest", target: "x86_64-unknown-linux-gnu" }
           - { name: "Windows x86_64", os: "windows-latest", target: "x86_64-pc-windows-msvc" }
-          - { name: "macOS Intel", os: "macos-latest", target: "x86_64-apple-darwin" }
-          - { name: "macOS ARM64", os: "macos-latest", target: "aarch64-apple-darwin" }
     permissions:
       contents: write
     steps:
@@ -98,13 +96,6 @@ jobs:
           Copy-Item -Path "src-tauri/target/${{ matrix.platform.target }}/release/bundle/msi/*.msi" -Destination "build/windows/" -Force -ErrorAction SilentlyContinue
           Copy-Item -Path "src-tauri/target/${{ matrix.platform.target }}/release/Personal Finance Tracker.exe" -Destination "build/windows/PersonalFinanceTracker-portable.exe" -Force -ErrorAction SilentlyContinue
           
-      - name: Prepare artifacts (macOS)
-        if: matrix.platform.os == 'macos-latest'
-        run: |
-          mkdir -p build/macos
-          cd src-tauri/target/${{ matrix.platform.target }}/release/bundle/macos
-          hdiutil create -volname "Personal Finance Tracker" -srcfolder . -ov -format UDZO "Personal-Finance-Tracker-${{ matrix.platform.target }}.dmg"
-          mv "Personal-Finance-Tracker-${{ matrix.platform.target }}.dmg" ../../../../../../../../build/macos/
           
       - name: Upload artifacts
         uses: softprops/action-gh-release@v2
@@ -113,7 +104,6 @@ jobs:
           files: |
             build/linux/*
             build/windows/*
-            build/macos/*.dmg
           token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
