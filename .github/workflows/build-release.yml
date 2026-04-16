@@ -93,7 +93,6 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # ===== MOBILE BUILDS =====
 # ===== MOBILE BUILDS =====
   build-mobile:
     name: Build Mobile (${{ matrix.platform }})
@@ -113,7 +112,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      # Android needs Java and specific NDK setup
       - name: Setup Java (Android only)
         if: matrix.platform == 'android'
         uses: actions/setup-java@v4
@@ -124,7 +122,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Targets for Android (all archs) and iOS (physical + simulator)
           targets: ${{ matrix.platform == 'android' && 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android' || 'aarch64-apple-ios,aarch64-apple-ios-sim' }}
 
       - name: Install dependencies
@@ -133,17 +130,23 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      # Corrected: Using 'tauri android build' or 'tauri ios build'
-      # We add --no-bundle for iOS if you don't have provisioning profiles set up in CI
+      # Initializes the project directories if they are missing from the repo
+      - name: Initialize Mobile Project
+        run: |
+          if [ "${{ matrix.platform }}" = "android" ]; then
+            pnpm tauri android init
+          else
+            pnpm tauri ios init
+          fi
+
+      # Corrected syntax: Added '--' before '--no-bundle'
       - name: Build Mobile App
         run: |
           if [ "${{ matrix.platform }}" = "android" ]; then
             pnpm tauri android build
           else
-            pnpm tauri ios build --no-bundle
+            pnpm tauri ios build -- --no-bundle
           fi
-        env:
-          NDK_HOME: ${{ steps.setup-python.outputs.python-path }} # Not strictly needed if standard paths work, but good to keep in mind
 
       - name: Upload Mobile Artifacts
         uses: actions/upload-artifact@v4
