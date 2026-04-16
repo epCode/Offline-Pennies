@@ -28,7 +28,7 @@ jobs:
         with:
           tag: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          draft: false
+          draft: true # FIXED: This now creates a draft instead of a published release
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -36,6 +36,7 @@ jobs:
   
   build-desktop:
     name: Build Desktop (${{ matrix.platform.name }})
+    needs: create-release # FIXED: Waits for the draft release to be created first
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
@@ -96,7 +97,6 @@ jobs:
           Copy-Item -Path "src-tauri/target/${{ matrix.platform.target }}/release/bundle/msi/*.msi" -Destination "build/windows/" -Force -ErrorAction SilentlyContinue
           Copy-Item -Path "src-tauri/target/${{ matrix.platform.target }}/release/Personal Finance Tracker.exe" -Destination "build/windows/PersonalFinanceTracker-portable.exe" -Force -ErrorAction SilentlyContinue
           
-          
       - name: Upload artifacts
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -111,6 +111,7 @@ jobs:
 
   build-mobile:
     name: Build Mobile (${{ matrix.platform }})
+    needs: create-release # FIXED: Waits for the draft release to be created first
     runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
